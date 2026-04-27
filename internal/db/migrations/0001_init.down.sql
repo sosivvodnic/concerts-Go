@@ -1,0 +1,9 @@
+DROP TABLE IF EXISTS location_seats;
+DROP TABLE IF EXISTS location_seat_rows;
+DROP TABLE IF EXISTS tickets;
+DROP TABLE IF EXISTS reservations;
+DROP TABLE IF EXISTS bookings;
+DROP TABLE IF EXISTS shows;
+DROP TABLE IF EXISTS concerts;
+DROP TABLE IF EXISTS locations;
+

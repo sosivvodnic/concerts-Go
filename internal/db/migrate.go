@@ -10,7 +10,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-//go:embed ../../db/migrations/*.sql
+//go:embed migrations/*.sql
 var migrationsFS embed.FS
 
 func EnsureMigrations(ctx context.Context, pool *pgxpool.Pool) error {
@@ -23,7 +23,7 @@ CREATE TABLE IF NOT EXISTS schema_migrations (
 		return fmt.Errorf("create schema_migrations: %w", err)
 	}
 
-	entries, err := migrationsFS.ReadDir("../../db/migrations")
+	entries, err := migrationsFS.ReadDir("migrations")
 	if err != nil {
 		return fmt.Errorf("read migrations: %w", err)
 	}
@@ -40,7 +40,7 @@ CREATE TABLE IF NOT EXISTS schema_migrations (
 			continue
 		}
 		v := strings.TrimSuffix(name, ".up.sql")
-		ups = append(ups, mig{version: v, path: "../../db/migrations/" + name})
+		ups = append(ups, mig{version: v, path: "migrations/" + name})
 	}
 
 	sort.Slice(ups, func(i, j int) bool { return ups[i].version < ups[j].version })
