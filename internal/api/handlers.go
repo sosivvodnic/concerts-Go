@@ -25,6 +25,11 @@ func Routes(db *pgxpool.Pool) http.Handler {
 		r.Get("/concerts", s.getConcerts)
 		r.Get("/concerts/{concert-id}", s.getConcert)
 		r.Get("/concerts/{concert-id}/shows/{show-id}/seating", s.getSeating)
+		r.Post("/concerts/{concert-id}/shows/{show-id}/reservation", s.postReservation)
+		r.Post("/concerts/{concert-id}/shows/{show-id}/booking", s.postBooking)
+
+		r.Post("/tickets", s.postTickets)
+		r.Post("/tickets/{ticket-id}/cancel", s.postTicketCancel)
 	})
 
 	return r
@@ -220,7 +225,13 @@ FROM location_seats
 WHERE location_seat_row_id = ANY (
   SELECT id FROM location_seat_rows WHERE show_id = $1
 )
-AND (reservation_id IS NOT NULL OR ticket_id IS NOT NULL)
+AND (
+  ticket_id IS NOT NULL
+  OR (
+    reservation_id IS NOT NULL
+    AND reservation_id IN (SELECT id FROM reservations WHERE expires_at > now())
+  )
+)
 ORDER BY location_seat_row_id, number`, showID)
 	if err != nil {
 		httpx.WriteError(w, http.StatusInternalServerError, "internal error")
