@@ -79,18 +79,22 @@ func (s *Server) postBooking(w http.ResponseWriter, r *http.Request) {
 
 	fields := map[string]string{}
 	getString := func(field string) (string, bool) {
+		label := field
+		if field == "reservation_token" {
+			label = "reservation token"
+		}
 		b, ok := raw[field]
 		if !ok || len(b) == 0 || string(b) == "null" {
-			fields[field] = fmt.Sprintf("The %s field is required.", field)
+			fields[field] = fmt.Sprintf("The %s field is required.", label)
 			return "", false
 		}
 		var s string
 		if err := json.Unmarshal(b, &s); err != nil {
-			fields[field] = fmt.Sprintf("The %s must be a string.", field)
+			fields[field] = fmt.Sprintf("The %s must be a string.", label)
 			return "", false
 		}
 		if s == "" {
-			fields[field] = fmt.Sprintf("The %s field is required.", field)
+			fields[field] = fmt.Sprintf("The %s field is required.", label)
 			return "", false
 		}
 		return s, true
