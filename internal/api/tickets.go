@@ -3,7 +3,9 @@ package api
 import (
 	"context"
 	"crypto/rand"
+	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"strconv"
 	"time"
@@ -62,30 +64,52 @@ func (s *Server) postBooking(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var req postBookingReq
-	if err := httpx.ReadJSON(r, &req); err != nil {
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		httpx.WriteError(w, http.StatusUnprocessableEntity, "Validation failed")
+		return
+	}
+	_ = r.Body.Close()
+
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(body, &raw); err != nil {
 		httpx.WriteError(w, http.StatusUnprocessableEntity, "Validation failed")
 		return
 	}
 
 	fields := map[string]string{}
-	if req.ReservationToken == "" {
-		fields["reservation_token"] = "The reservation token field is required."
+	getString := func(field string) (string, bool) {
+		b, ok := raw[field]
+		if !ok || len(b) == 0 || string(b) == "null" {
+			fields[field] = fmt.Sprintf("The %s field is required.", field)
+			return "", false
+		}
+		var s string
+		if err := json.Unmarshal(b, &s); err != nil {
+			fields[field] = fmt.Sprintf("The %s must be a string.", field)
+			return "", false
+		}
+		if s == "" {
+			fields[field] = fmt.Sprintf("The %s field is required.", field)
+			return "", false
+		}
+		return s, true
 	}
-	if req.Name == "" {
-		fields["name"] = "The name field is required."
+
+	var req postBookingReq
+	var ok bool
+	if req.ReservationToken, ok = getString("reservation_token"); !ok {
+		// keep collecting other field errors
 	}
-	if req.Address == "" {
-		fields["address"] = "The address field is required."
+	if req.Name, ok = getString("name"); !ok {
 	}
-	if req.City == "" {
-		fields["city"] = "The city field is required."
+	if req.Address, ok = getString("address"); !ok {
 	}
-	if req.Zip == "" {
-		fields["zip"] = "The zip field is required."
+	if req.City, ok = getString("city"); !ok {
 	}
-	if req.Country == "" {
-		fields["country"] = "The country field is required."
+	if req.Zip, ok = getString("zip"); !ok {
+	}
+	if req.Country, ok = getString("country"); !ok {
 	}
 	if len(fields) > 0 {
 		httpx.WriteJSON(w, http.StatusUnprocessableEntity, map[string]any{

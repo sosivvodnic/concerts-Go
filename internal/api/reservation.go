@@ -2,9 +2,11 @@ package api
 
 import (
 	"crypto/rand"
+	"encoding/json"
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"time"
 
@@ -34,20 +36,80 @@ func (s *Server) postReservation(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var req postReservationReq
-	if err := httpx.ReadJSON(r, &req); err != nil {
+	fields := map[string]string{}
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		httpx.WriteError(w, http.StatusUnprocessableEntity, "Validation failed")
+		return
+	}
+	_ = r.Body.Close()
+
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(body, &raw); err != nil {
 		httpx.WriteError(w, http.StatusUnprocessableEntity, "Validation failed")
 		return
 	}
 
-	fields := map[string]string{}
-	if req.Reservations == nil {
-		fields["reservations"] = "The reservations field is required."
+	var req postReservationReq
+
+	// reservation_token (optional)
+	if b, ok := raw["reservation_token"]; ok && len(b) > 0 && string(b) != "null" {
+		var tok string
+		if err := json.Unmarshal(b, &tok); err == nil && tok != "" {
+			req.ReservationToken = &tok
+		}
 	}
 
+	// reservations (required, can be empty)
+	bRes, ok := raw["reservations"]
+	if !ok || len(bRes) == 0 || string(bRes) == "null" {
+		fields["reservations"] = "The reservations field is required."
+	} else {
+		var arr []json.RawMessage
+		if err := json.Unmarshal(bRes, &arr); err != nil {
+			fields["reservations"] = "The reservations field is required."
+		} else {
+			req.Reservations = make([]reservationSeatReq, 0, len(arr))
+			for _, it := range arr {
+				var item map[string]json.RawMessage
+				if err := json.Unmarshal(it, &item); err != nil {
+					fields["reservations"] = "The row field is required."
+					break
+				}
+
+				var row int64
+				if b, ok := item["row"]; !ok || len(b) == 0 || string(b) == "null" {
+					fields["reservations"] = "The row field is required."
+					break
+				} else if err := json.Unmarshal(b, &row); err != nil || row <= 0 {
+					fields["reservations"] = "The row field is required."
+					break
+				}
+
+				var seat int
+				if b, ok := item["seat"]; !ok || len(b) == 0 || string(b) == "null" {
+					fields["reservations"] = "The seat field is required."
+					break
+				} else if err := json.Unmarshal(b, &seat); err != nil || seat <= 0 {
+					fields["reservations"] = "The seat field is required."
+					break
+				}
+
+				req.Reservations = append(req.Reservations, reservationSeatReq{Row: row, Seat: seat})
+			}
+		}
+	}
+
+	// duration (optional, default 300)
 	duration := 300
-	if req.Duration != nil {
-		duration = *req.Duration
+	if bDur, ok := raw["duration"]; ok && len(bDur) > 0 && string(bDur) != "null" {
+		var d int
+		if err := json.Unmarshal(bDur, &d); err == nil {
+			duration = d
+			req.Duration = &d
+		} else {
+			duration = 0
+		}
 	}
 	if duration < 1 || duration > 300 {
 		fields["duration"] = "The duration must be between 1 and 300."
@@ -141,15 +203,6 @@ WHERE s.location_seat_row_id = r.id
 
 	// validate and reserve seats
 	for _, rs := range req.Reservations {
-		if rs.Row <= 0 {
-			fields["reservations"] = "The row field is required."
-			break
-		}
-		if rs.Seat <= 0 {
-			fields["reservations"] = "The seat field is required."
-			break
-		}
-
 		var rowOK bool
 		if err := tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM location_seat_rows WHERE id=$1 AND show_id=$2)`, rs.Row, showID).Scan(&rowOK); err != nil || !rowOK {
 			fields["reservations"] = fmt.Sprintf("Seat %d in row %d is invalid.", rs.Seat, rs.Row)
